@@ -1,0 +1,20 @@
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Local database
+server/instance/
+
+# Frontend dependencies and build output
+client/node_modules/
+client/dist/
+
+# OS files
+.DS_Store
