@@ -16,11 +16,40 @@ projects_bp = Blueprint(
 def get_projects():
     user_id = int(get_jwt_identity())
 
+    # Validate pagination parameters
+    try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 10))
+    except (ValueError, TypeError):
+        return jsonify({
+            "error": "Page and per_page must be integers."
+        }), 400
+
+    if page < 1 or per_page < 1 or per_page > 100:
+        return jsonify({
+            "error": (
+                "Page must be at least 1 and per_page "
+                "must be between 1 and 100."
+            )
+        }), 400
+
+    # Count only this user's projects
+    total = db.session.execute(
+        db.select(db.func.count(Project.id)).filter_by(
+            user_id=user_id
+        )
+    ).scalar_one()
+
+    # Retrieve the requested page of projects
     projects = db.session.execute(
-        db.select(Project).filter_by(user_id=user_id)
+        db.select(Project)
+        .filter_by(user_id=user_id)
+        .order_by(Project.id)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
     ).scalars().all()
 
-    return jsonify([
+    response = jsonify([
         {
             "id": project.id,
             "title": project.title,
@@ -29,7 +58,17 @@ def get_projects():
             "user_id": project.user_id,
         }
         for project in projects
-    ]), 200
+    ])
+
+    # Pagination metadata
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Per-Page"] = str(per_page)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Total-Pages"] = str(
+        (total + per_page - 1) // per_page
+    )
+
+    return response, 200
 
 
 @projects_bp.post("")
@@ -37,18 +76,31 @@ def get_projects():
 def create_project():
     data = request.get_json(silent=True) or {}
 
-    title = data.get("title", "").strip()
-    description = data.get("description", "").strip()
+    title = data.get("title", "")
+    description = data.get("description", "")
     status = data.get("status", "active")
 
-    if not title:
-        return jsonify({"error": "Project title is required."}), 400
+    if not isinstance(title, str) or not title.strip():
+        return jsonify({
+            "error": "Project title is required."
+        }), 400
+
+    title = title.strip()
 
     if len(title) > 150:
-        return jsonify({"error": "Title must be 150 characters or fewer."}), 400
+        return jsonify({
+            "error": "Title must be 150 characters or fewer."
+        }), 400
+
+    if not isinstance(description, str):
+        return jsonify({
+            "error": "Description must be text."
+        }), 400
 
     if status not in ["active", "completed", "on-hold"]:
-        return jsonify({"error": "Invalid project status."}), 400
+        return jsonify({
+            "error": "Invalid project status."
+        }), 400
 
     user_id = int(get_jwt_identity())
     user = db.session.get(User, user_id)
@@ -58,7 +110,7 @@ def create_project():
 
     project = Project(
         title=title,
-        description=description,
+        description=description.strip(),
         status=status,
         user_id=user_id,
     )
@@ -123,21 +175,33 @@ def update_project(project_id):
         title = data["title"]
 
         if not isinstance(title, str) or not title.strip():
-            return jsonify({"error": "Project title cannot be empty."}), 400
+            return jsonify({
+                "error": "Project title cannot be empty."
+            }), 400
 
-        if len(title.strip()) > 150:
-            return jsonify({"error": "Title must be 150 characters or fewer."}), 400
+        title = title.strip()
 
-        project.title = title.strip()
+        if len(title) > 150:
+            return jsonify({
+                "error": "Title must be 150 characters or fewer."
+            }), 400
+
+        project.title = title
 
     if "description" in data:
         if not isinstance(data["description"], str):
-            return jsonify({"error": "Description must be text."}), 400
+            return jsonify({
+                "error": "Description must be text."
+            }), 400
+
         project.description = data["description"].strip()
 
     if "status" in data:
         if data["status"] not in ["active", "completed", "on-hold"]:
-            return jsonify({"error": "Invalid project status."}), 400
+            return jsonify({
+                "error": "Invalid project status."
+            }), 400
+
         project.status = data["status"]
 
     db.session.commit()
@@ -172,4 +236,6 @@ def delete_project(project_id):
     db.session.delete(project)
     db.session.commit()
 
-    return jsonify({"message": "Project deleted successfully."}), 200
+    return jsonify({
+        "message": "Project deleted successfully."
+    }), 200
