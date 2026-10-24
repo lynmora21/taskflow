@@ -51,15 +51,19 @@ migrate = Migrate(app, db, directory=os.path.join(
 ))
 jwt = JWTManager(app)
 
+
 # Allow the React frontend to communicate with Flask
 CORS(
     app,
-    resources={
-        r"/api/*": {
-            "origins": "http://localhost:5173"
-        }
-    },
+    origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+    ],
+    supports_credentials=True,
 )
+
 
 # Register authentication endpoints
 app.register_blueprint(auth_bp)
