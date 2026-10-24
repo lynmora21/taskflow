@@ -20,14 +20,20 @@ load_dotenv(
 
 app = Flask(__name__)
 
-# Create the instance directory for the SQLite database
+# Create the instance directory for the SQLite fallback database
 os.makedirs(app.instance_path, exist_ok=True)
 
 # Database configuration
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    "sqlite:///"
-    + os.path.join(app.instance_path, "taskflow.db")
-)
+database_url = os.getenv("DATABASE_URL")
+
+if database_url:
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        "sqlite:///"
+        + os.path.join(app.instance_path, "taskflow.db")
+    )
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # JWT configuration
@@ -40,7 +46,9 @@ if not app.config["JWT_SECRET_KEY"]:
 
 # Initialize extensions
 db.init_app(app)
-migrate = Migrate(app, db)
+migrate = Migrate(app, db, directory=os.path.join(
+    os.path.dirname(__file__), "migrations"
+))
 jwt = JWTManager(app)
 
 # Allow the React frontend to communicate with Flask
